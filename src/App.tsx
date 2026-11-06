@@ -68,6 +68,9 @@ export default function App() {
   };
 
   const handleJumpSector = (sector: AppSettings['activeSector']) => {
+    if (settings.cameraMode === 'inspect') {
+      handleCloseInspector();
+    }
     if (worldManagerRef.current) {
       worldManagerRef.current.jumpToSector(sector, cameraRef.current?.position.z);
       setSettings((prev) => ({
@@ -113,17 +116,18 @@ export default function App() {
   };
 
   const handleCloseInspector = () => {
+    if (settings.cameraMode !== 'inspect') return;
     setSelectedComponent(null);
-    if (worldManagerRef.current) {
+    if (worldManagerRef.current && cameraRef.current) {
       worldManagerRef.current.inspectedTarget = null;
-      worldManagerRef.current.startExitInspectTransition();
+      worldManagerRef.current.startExitInspectTransition(cameraRef.current);
     }
     setSettings((prev) => ({ ...prev, cameraMode: 'screensaver' }));
   };
 
   return (
     <main
-      className="relative w-screen h-screen overflow-hidden bg-[#0a0d10] text-slate-100 font-sans select-none"
+      className="relative w-full h-dvh overflow-hidden bg-[#0a0d10] text-slate-100 font-sans select-none"
       data-state={settings.cameraMode}
     >
       {/* 3D WebGL Canvas Layer */}

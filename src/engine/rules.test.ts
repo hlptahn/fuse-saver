@@ -6,6 +6,8 @@ import {
   getRequiredChunkIndices,
   generateChunkWaypoints,
   computeTelemetry,
+  smoothstep,
+  calculateRollingAverage,
   CHUNK_LENGTH,
 } from './rules';
 
@@ -69,3 +71,23 @@ test('computeTelemetry returns valid realistic industrial electrical telemetry',
   assert.ok(tele.temperatureC > 30 && tele.temperatureC < 65, `Temp was ${tele.temperatureC}`);
   assert.equal(tele.activeFuses, 84);
 });
+
+test('smoothstep computes S-curve interpolation clamped between 0 and 1', () => {
+  assert.equal(smoothstep(0, 1, -0.5), 0);
+  assert.equal(smoothstep(0, 1, 0), 0);
+  assert.equal(smoothstep(0, 1, 0.5), 0.5);
+  assert.equal(smoothstep(0, 1, 1), 1);
+  assert.equal(smoothstep(0, 1, 1.5), 1);
+  // Monotonically increasing check
+  const val1 = smoothstep(0, 1, 0.25);
+  const val2 = smoothstep(0, 1, 0.75);
+  assert.ok(val1 < 0.5);
+  assert.ok(val2 > 0.5);
+});
+
+test('calculateRollingAverage calculates mean of sample history accurately', () => {
+  assert.equal(calculateRollingAverage([]), 0);
+  assert.equal(calculateRollingAverage([0.016, 0.016, 0.016]), 0.016);
+  assert.equal(calculateRollingAverage([0.02, 0.04]), 0.03);
+});
+

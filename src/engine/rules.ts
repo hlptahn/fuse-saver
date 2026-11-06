@@ -172,3 +172,24 @@ export function computeTelemetry(timeSec: number, currentMultiplier: number = 1.
     totalFuses: 84,
   };
 }
+
+/**
+ * Hermite interpolation smoothstep clamped between 0 and 1.
+ */
+export function smoothstep(min: number, max: number, value: number): number {
+  const x = Math.max(0, Math.min(1, (value - min) / (max - min)));
+  return x * x * (3 - 2 * x);
+}
+
+/**
+ * Calculates rolling average of an array of frame dt samples.
+ */
+export function calculateRollingAverage(samples: number[]): number {
+  if (samples.length === 0) return 0;
+  let sum = 0;
+  for (let i = 0; i < samples.length; i++) {
+    sum += samples[i];
+  }
+  return sum / samples.length;
+}
+

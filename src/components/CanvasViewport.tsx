@@ -4,6 +4,7 @@ import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment
 import { MaterialLibrary } from '../engine/materials';
 import { WorldManager } from '../engine/worldManager';
 import { proceduralAudio } from '../audio/proceduralAudio';
+import { calculateRollingAverage } from '../engine/rules';
 import { AppSettings, CameraMode, ComponentSpec } from '../types';
 
 interface CanvasViewportProps {
@@ -36,9 +37,12 @@ export const CanvasViewport: React.FC<CanvasViewportProps> = ({
 
       if (worldManagerRef.current && cameraRef.current) {
         if (newMode === 'manual') {
+          worldManagerRef.current.resetExitInspectTransition();
           worldManagerRef.current.syncCameraToManual(cameraRef.current);
-        } else if (oldMode === 'manual' && newMode === 'screensaver') {
-          worldManagerRef.current.syncManualToScreensaver(cameraRef.current);
+        } else if (newMode === 'inspect') {
+          worldManagerRef.current.resetExitInspectTransition();
+        } else if (newMode === 'screensaver') {
+          worldManagerRef.current.travelDistance = cameraRef.current.position.z;
         }
       }
     }
@@ -221,7 +225,24 @@ export const CanvasViewport: React.FC<CanvasViewportProps> = ({
 
     // Keyboard bindings
     const onKeyDown = (e: KeyboardEvent) => {
-      if (isInputElement(e.target)) return;
+      const targetEl = e.target instanceof HTMLElement ? e.target : null;
+      const isInsideButtonOrInput = !!targetEl && (
+        targetEl.tagName === 'BUTTON' ||
+        targetEl.tagName === 'INPUT' ||
+        targetEl.tagName === 'SELECT' ||
+        targetEl.tagName === 'TEXTAREA' ||
+        targetEl.isContentEditable ||
+        !!targetEl.closest('button, input, select, textarea')
+      );
+
+      // If target is inside button, input, or select, do nothing for Space and Enter: no spark, no preventDefault
+      if (isInsideButtonOrInput) {
+        if (e.key === ' ' || e.key === 'Enter') {
+          return;
+        }
+        if (isInputElement(e.target)) return;
+      }
+
       if (e.ctrlKey || e.metaKey || e.altKey) return;
 
       const key = e.key.toLowerCase();
@@ -233,14 +254,7 @@ export const CanvasViewport: React.FC<CanvasViewportProps> = ({
       if (key === 'e') worldManager.setManualControl('up', true);
 
       if (key === ' ') {
-        const isButtonOrInput = e.target instanceof HTMLElement && (
-          e.target.tagName.toLowerCase() === 'button' ||
-          e.target.tagName.toLowerCase() === 'input' ||
-          e.target.closest('button')
-        );
-        if (!isButtonOrInput) {
-          e.preventDefault();
-        }
+        e.preventDefault();
         worldManager.triggerSparkAtCameraTarget(camera);
       }
       if (key === 'h') {
@@ -254,14 +268,19 @@ export const CanvasViewport: React.FC<CanvasViewportProps> = ({
         }
       }
       if (key === 'escape') {
-        if (onCloseInspector) {
+        if (settingsRef.current.cameraMode === 'inspect' && onCloseInspector) {
           onCloseInspector();
         }
       }
-      if (key === '1') worldManager.jumpToSector('micro_pcb', camera.position.z);
-      if (key === '2') worldManager.jumpToSector('industrial_fuses', camera.position.z);
-      if (key === '3') worldManager.jumpToSector('busbar_trench', camera.position.z);
-      if (key === '4') worldManager.jumpToSector('transformer_substation', camera.position.z);
+      if (key === '1' || key === '2' || key === '3' || key === '4') {
+        if (settingsRef.current.cameraMode === 'inspect' && onCloseInspector) {
+          onCloseInspector();
+        }
+        if (key === '1') worldManager.jumpToSector('micro_pcb', camera.position.z);
+        if (key === '2') worldManager.jumpToSector('industrial_fuses', camera.position.z);
+        if (key === '3') worldManager.jumpToSector('busbar_trench', camera.position.z);
+        if (key === '4') worldManager.jumpToSector('transformer_substation', camera.position.z);
+      }
     };
 
     const onKeyUp = (e: KeyboardEvent) => {
@@ -308,7 +327,8 @@ export const CanvasViewport: React.FC<CanvasViewportProps> = ({
     // 9. Continuous Animation Loop with Performance Guard
     let frameId = 0;
     let prevTime = performance.now();
-    let slowTimeAccumulator = 0;
+    const dtHistory: number[] = [];
+    let validFrames = 0;
     let performanceGuardApplied = isSoftwareGl;
 
     function afterDraw(cb: () => void) {
@@ -331,20 +351,34 @@ export const CanvasViewport: React.FC<CanvasViewportProps> = ({
       const now = performance.now();
       const rawDt = (now - prevTime) * 0.001;
       prevTime = now;
+
+      // Skip any frame where rawDt > 0.25 or document.hidden (sleep/tab resume)
+      if (rawDt > 0.25 || document.hidden) {
+        if (isSoftwareGl) {
+          afterDraw(tick);
+        } else {
+          frameId = requestAnimationFrame(tick);
+        }
+        return;
+      }
+
       const dt = Math.min(rawDt, 0.05); // Clamp dt to prevent physics/flight jumps
 
-      // Performance guard: lower pixel ratio to 1 and disable shadows if average frame time > 30ms for 3s
+      // Performance guard: rolling average of dt over the last 120 frames
       if (!performanceGuardApplied) {
-        if (rawDt > 0.030) {
-          slowTimeAccumulator += rawDt;
-          if (slowTimeAccumulator >= 3.0) {
+        dtHistory.push(rawDt);
+        if (dtHistory.length > 120) {
+          dtHistory.shift();
+        }
+        validFrames++;
+        if (validFrames >= 120) {
+          const avgDt = calculateRollingAverage(dtHistory);
+          if (avgDt > 0.033) {
             performanceGuardApplied = true;
             renderer.setPixelRatio(1);
             renderer.shadowMap.enabled = false;
             keyLight.castShadow = false;
           }
-        } else {
-          slowTimeAccumulator = Math.max(0, slowTimeAccumulator - rawDt * 0.5);
         }
       }
 

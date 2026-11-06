@@ -20,6 +20,7 @@ import {
   generateChunkWaypoints,
   SplineWaypoint,
   SectorType,
+  smoothstep,
 } from './rules';
 import { CameraMode, ComponentSpec } from '../types';
 
@@ -49,6 +50,9 @@ export class WorldManager {
   private currentBankAngle = 0;
   private targetBankAngle = 0;
   private exitInspectTimer = 0;
+  private readonly exitInspectDuration = 0.6;
+  private exitInspectStartPos = new THREE.Vector3();
+  private exitInspectStartQuat = new THREE.Quaternion();
   private targetCameraHelper = new THREE.PerspectiveCamera();
 
   // Manual camera state
@@ -75,9 +79,15 @@ export class WorldManager {
     this.travelDistance = camera.position.z;
   }
 
-  public startExitInspectTransition() {
-    this.exitInspectTimer = 0.6;
+  public startExitInspectTransition(camera: THREE.PerspectiveCamera) {
+    this.exitInspectTimer = this.exitInspectDuration;
+    this.exitInspectStartPos.copy(camera.position);
+    this.exitInspectStartQuat.copy(camera.quaternion);
     this.inspectedTarget = null;
+  }
+
+  public resetExitInspectTransition() {
+    this.exitInspectTimer = 0;
   }
 
   private getTForZ(targetZ: number): number {
@@ -392,18 +402,25 @@ export class WorldManager {
         this.targetBankAngle = -tangent.x * 0.45;
         this.currentBankAngle += (this.targetBankAngle - this.currentBankAngle) * Math.min(1, dt * 4.0);
 
-        if (this.exitInspectTimer > 0) {
-          this.exitInspectTimer -= dt;
-          this.targetCameraHelper.position.copy(camPos);
-          this.targetCameraHelper.lookAt(lookTarget);
-          this.targetCameraHelper.rotation.z += this.currentBankAngle;
+        this.targetCameraHelper.position.copy(camPos);
+        this.targetCameraHelper.lookAt(lookTarget);
+        this.targetCameraHelper.rotation.z += this.currentBankAngle;
 
-          camera.position.lerp(camPos, Math.min(1, dt * 5.0));
-          camera.quaternion.slerp(this.targetCameraHelper.quaternion, Math.min(1, dt * 5.0));
+        if (this.exitInspectTimer > 0) {
+          this.exitInspectTimer = Math.max(0, this.exitInspectTimer - dt);
+          const progress = 1.0 - this.exitInspectTimer / this.exitInspectDuration;
+          const w = smoothstep(0, 1, progress);
+
+          camera.position.copy(this.exitInspectStartPos).lerp(camPos, w);
+          camera.quaternion.copy(this.exitInspectStartQuat).slerp(this.targetCameraHelper.quaternion, w);
+
+          if (this.exitInspectTimer <= 0) {
+            camera.position.copy(camPos);
+            camera.quaternion.copy(this.targetCameraHelper.quaternion);
+          }
         } else {
           camera.position.copy(camPos);
-          camera.lookAt(lookTarget);
-          camera.rotation.z += this.currentBankAngle;
+          camera.quaternion.copy(this.targetCameraHelper.quaternion);
         }
 
         // Keep chunks active around current camera position
