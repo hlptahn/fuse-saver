@@ -181,6 +181,24 @@ export function createChipLabelTexture(chipTitle = 'FUSECO-DSP', spec = 'V92-800
   return texture;
 }
 
+export function createPulseTexture(): THREE.CanvasTexture {
+  const canvas = document.createElement('canvas');
+  canvas.width = 64;
+  canvas.height = 64;
+  const ctx = canvas.getContext('2d')!;
+
+  const grad = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+  grad.addColorStop(0, '#ffffff');
+  grad.addColorStop(0.3, '#ff7700');
+  grad.addColorStop(0.7, '#ff3300');
+  grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, 64, 64);
+
+  return new THREE.CanvasTexture(canvas);
+}
+
 // Reusable Shared Materials
 
 export class MaterialLibrary {
@@ -188,6 +206,7 @@ export class MaterialLibrary {
   public metalBumpTexture: THREE.CanvasTexture;
   public fuseLabelTexture: THREE.CanvasTexture;
   public chipLabelTexture: THREE.CanvasTexture;
+  public pulseTexture: THREE.CanvasTexture;
 
   public pcbSubstrate: THREE.MeshStandardMaterial;
   public copperBrushed: THREE.MeshStandardMaterial;
@@ -208,11 +227,20 @@ export class MaterialLibrary {
   public solderSilver: THREE.MeshStandardMaterial;
   public sparkGlow: THREE.MeshBasicMaterial;
 
+  public fuseLabelMaterial: THREE.MeshStandardMaterial;
+  public chipLabelMaterial: THREE.MeshStandardMaterial;
+  public contactShadowMaterial: THREE.MeshBasicMaterial;
+  public cartridgeBandMaterial: THREE.MeshStandardMaterial;
+  public capacitorStripeMaterial: THREE.MeshBasicMaterial;
+  public traceLineMaterial: THREE.LineBasicMaterial;
+  public pulseMaterial: THREE.PointsMaterial;
+
   constructor() {
     this.pcbTexture = createPCBTexture();
     this.metalBumpTexture = createBrushedMetalTexture();
     this.fuseLabelTexture = createFuseLabelTexture();
     this.chipLabelTexture = createChipLabelTexture();
+    this.pulseTexture = createPulseTexture();
 
     // Dark PCB Substrate with procedural traces & vias
     this.pcbSubstrate = new THREE.MeshStandardMaterial({
@@ -350,6 +378,56 @@ export class MaterialLibrary {
       transparent: true,
       opacity: 0.9,
     });
+
+    // Hoisted Shared Materials across procedural models and traces
+    this.fuseLabelMaterial = new THREE.MeshStandardMaterial({
+      color: 0xffffff,
+      map: this.fuseLabelTexture,
+      roughness: 0.3,
+      polygonOffset: true,
+      polygonOffsetFactor: -1,
+      polygonOffsetUnits: -1,
+    });
+
+    this.chipLabelMaterial = new THREE.MeshStandardMaterial({
+      color: 0xffffff,
+      map: this.chipLabelTexture,
+      roughness: 0.6,
+      polygonOffset: true,
+      polygonOffsetFactor: -1,
+      polygonOffsetUnits: -1,
+    });
+
+    this.contactShadowMaterial = new THREE.MeshBasicMaterial({
+      color: 0x000000,
+      transparent: true,
+      opacity: 0.45,
+      depthWrite: false,
+    });
+
+    this.cartridgeBandMaterial = new THREE.MeshStandardMaterial({
+      color: 0x22262b,
+      metalness: 0.6,
+      roughness: 0.3,
+    });
+
+    this.capacitorStripeMaterial = new THREE.MeshBasicMaterial({
+      color: 0x85929e,
+    });
+
+    this.traceLineMaterial = new THREE.LineBasicMaterial({
+      color: 0xda7338,
+      linewidth: 2,
+    });
+
+    this.pulseMaterial = new THREE.PointsMaterial({
+      color: 0xff6600,
+      size: 0.65,
+      map: this.pulseTexture,
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
   }
 
   public dispose() {
@@ -357,6 +435,7 @@ export class MaterialLibrary {
     this.metalBumpTexture.dispose();
     this.fuseLabelTexture.dispose();
     this.chipLabelTexture.dispose();
+    this.pulseTexture.dispose();
 
     this.pcbSubstrate.dispose();
     this.copperBrushed.dispose();
@@ -376,5 +455,13 @@ export class MaterialLibrary {
     this.ferriteCore.dispose();
     this.solderSilver.dispose();
     this.sparkGlow.dispose();
+
+    this.fuseLabelMaterial.dispose();
+    this.chipLabelMaterial.dispose();
+    this.contactShadowMaterial.dispose();
+    this.cartridgeBandMaterial.dispose();
+    this.capacitorStripeMaterial.dispose();
+    this.traceLineMaterial.dispose();
+    this.pulseMaterial.dispose();
   }
 }

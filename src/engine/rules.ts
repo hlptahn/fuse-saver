@@ -21,7 +21,7 @@ export const SECTOR_TYPES: SectorType[] = [
 ];
 
 export const CHUNK_LENGTH = 120; // Units along Z axis per procedural chunk
-export const ACTIVE_CHUNKS_AHEAD = 4; // Chunks kept ahead of the camera
+export const ACTIVE_CHUNKS_AHEAD = 2; // Chunks kept ahead of the camera
 export const ACTIVE_CHUNKS_BEHIND = 2; // Chunks kept behind before cleanup
 
 /**

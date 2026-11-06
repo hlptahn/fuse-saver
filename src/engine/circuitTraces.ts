@@ -72,11 +72,7 @@ export class CircuitTraceSystem {
     // Static Copper Trace Geometry
     const lineGeo = new THREE.BufferGeometry();
     lineGeo.setAttribute('position', new THREE.Float32BufferAttribute(linePositions, 3));
-    const lineMat = new THREE.LineBasicMaterial({
-      color: 0xda7338,
-      linewidth: 2,
-    });
-    this.traceLinesMesh = new THREE.LineSegments(lineGeo, lineMat);
+    this.traceLinesMesh = new THREE.LineSegments(lineGeo, materials.traceLineMaterial);
     this.group.add(this.traceLinesMesh);
 
     // Dynamic Flowing Current Particles (Orange Energy Pulses)
@@ -91,38 +87,8 @@ export class CircuitTraceSystem {
     const pulseGeo = new THREE.BufferGeometry();
     pulseGeo.setAttribute('position', new THREE.BufferAttribute(this.pulsePositions, 3));
 
-    // Custom Canvas Texture for luminous electric pulse dot
-    const pulseTexture = this.createPulseTexture();
-    const pulseMat = new THREE.PointsMaterial({
-      color: 0xff6600,
-      size: 0.65,
-      map: pulseTexture,
-      transparent: true,
-      blending: THREE.AdditiveBlending,
-      depthWrite: false,
-    });
-
-    this.pulsePointsMesh = new THREE.Points(pulseGeo, pulseMat);
+    this.pulsePointsMesh = new THREE.Points(pulseGeo, materials.pulseMaterial);
     this.group.add(this.pulsePointsMesh);
-  }
-
-  private createPulseTexture(): THREE.CanvasTexture {
-    const canvas = document.createElement('canvas');
-    canvas.width = 64;
-    canvas.height = 64;
-    const ctx = canvas.getContext('2d')!;
-
-    const grad = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
-    grad.addColorStop(0, '#ffffff');
-    grad.addColorStop(0.3, '#ff7700');
-    grad.addColorStop(0.7, '#ff3300');
-    grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
-
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, 64, 64);
-
-    const texture = new THREE.CanvasTexture(canvas);
-    return texture;
   }
 
   private resetPulse(index: number, zStart: number, zEnd: number, corridorWidth: number) {
@@ -158,11 +124,9 @@ export class CircuitTraceSystem {
   public dispose() {
     if (this.traceLinesMesh) {
       this.traceLinesMesh.geometry.dispose();
-      (this.traceLinesMesh.material as THREE.Material).dispose();
     }
     if (this.pulsePointsMesh) {
       this.pulsePointsMesh.geometry.dispose();
-      (this.pulsePointsMesh.material as THREE.Material).dispose();
     }
   }
 }

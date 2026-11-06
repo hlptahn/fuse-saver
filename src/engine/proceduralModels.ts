@@ -77,15 +77,7 @@ export function createNHBladeFuse(
 
   // 7. Fuseco Technical Label Plate
   const labelGeo = new THREE.PlaneGeometry(bodyWidth * 0.9, bodyHeight * 0.75);
-  const labelMat = new THREE.MeshStandardMaterial({
-    color: 0xffffff,
-    map: materials.fuseLabelTexture,
-    roughness: 0.3,
-    polygonOffset: true,
-    polygonOffsetFactor: -1,
-    polygonOffsetUnits: -1,
-  });
-  const labelMesh = new THREE.Mesh(labelGeo, labelMat);
+  const labelMesh = new THREE.Mesh(labelGeo, materials.fuseLabelMaterial);
   labelMesh.position.set(0, bodyMesh.position.y, bodyDepth * 0.5 + 0.01);
   group.add(labelMesh);
 
@@ -112,13 +104,7 @@ export function createNHBladeFuse(
 
   // Grounding Soft Contact Shadow
   const shadowGeo = new THREE.CircleGeometry(baseWidth * 1.1, 16);
-  const shadowMat = new THREE.MeshBasicMaterial({
-    color: 0x000000,
-    transparent: true,
-    opacity: 0.45,
-    depthWrite: false,
-  });
-  const shadowMesh = new THREE.Mesh(shadowGeo, shadowMat);
+  const shadowMesh = new THREE.Mesh(shadowGeo, materials.contactShadowMaterial);
   shadowMesh.rotation.x = -Math.PI * 0.5;
   shadowMesh.position.y = 0.02;
   group.add(shadowMesh);
@@ -184,12 +170,7 @@ export function createCylindricalCartridgeFuse(
 
   // 5. Rating Specification Metallic Band
   const bandGeo = new THREE.CylinderGeometry(radius * 1.01, radius * 1.01, bodyLen * 0.35, 24);
-  const bandMat = new THREE.MeshStandardMaterial({
-    color: 0x22262b,
-    metalness: 0.6,
-    roughness: 0.3,
-  });
-  const band = new THREE.Mesh(bandGeo, bandMat);
+  const band = new THREE.Mesh(bandGeo, materials.cartridgeBandMaterial);
   band.position.y = bodyMesh.position.y;
   group.add(band);
 
@@ -325,15 +306,7 @@ export function createMicrochipQFP(
   // 2. Center laser-etched spec badge / heat spreader
   const slugSize = size * 0.7;
   const slugGeo = new THREE.PlaneGeometry(slugSize, slugSize);
-  const slugMat = new THREE.MeshStandardMaterial({
-    color: 0xffffff,
-    map: materials.chipLabelTexture,
-    roughness: 0.6,
-    polygonOffset: true,
-    polygonOffsetFactor: -1,
-    polygonOffsetUnits: -1,
-  });
-  const slug = new THREE.Mesh(slugGeo, slugMat);
+  const slug = new THREE.Mesh(slugGeo, materials.chipLabelMaterial);
   slug.rotation.x = -Math.PI * 0.5;
   slug.position.set(0, bodyHeight + 0.16, 0);
   group.add(slug);
@@ -367,13 +340,7 @@ export function createMicrochipQFP(
 
   // 5. Soft Contact Shadow
   const shadowGeo = new THREE.PlaneGeometry(size * 1.5, size * 1.5);
-  const shadowMat = new THREE.MeshBasicMaterial({
-    color: 0x000000,
-    transparent: true,
-    opacity: 0.5,
-    depthWrite: false,
-  });
-  const shadow = new THREE.Mesh(shadowGeo, shadowMat);
+  const shadow = new THREE.Mesh(shadowGeo, materials.contactShadowMaterial);
   shadow.rotation.x = -Math.PI * 0.5;
   shadow.position.y = 0.02;
   group.add(shadow);
@@ -510,8 +477,7 @@ export function createCapacitorBank(
 
   // 5. Polarity Negative Identification Stripe
   const stripeGeo = new THREE.PlaneGeometry(radius * 0.35, height * 0.85);
-  const stripeMat = new THREE.MeshBasicMaterial({ color: 0x85929e });
-  const stripe = new THREE.Mesh(stripeGeo, stripeMat);
+  const stripe = new THREE.Mesh(stripeGeo, materials.capacitorStripeMaterial);
   stripe.position.set(0, bodyMesh.position.y, radius + 0.01);
   group.add(stripe);
 

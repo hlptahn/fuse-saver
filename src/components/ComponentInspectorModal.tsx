@@ -93,6 +93,11 @@ export const ComponentInspectorModal: React.FC<ComponentInspectorModalProps> = (
           Resume Flight
         </button>
       </div>
+
+      {/* Footer Disclaimer */}
+      <p className="text-[10px] text-[#5b6b7a] font-mono text-center mt-2.5">
+        Illustrative values, not official Fuseco product data.
+      </p>
     </div>
   );
 };

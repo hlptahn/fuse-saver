@@ -39,6 +39,10 @@ test('getRequiredChunkIndices produces continuous chunk range around Z', () => {
   const indices = getRequiredChunkIndices(150, 3, 1, 100);
   // Current index for 150 at chunkLength 100 is 1. Behind 1 is 0, ahead 3 is 4. Range [0, 1, 2, 3, 4]
   assert.deepEqual(indices, [0, 1, 2, 3, 4]);
+
+  const defaultIndices = getRequiredChunkIndices(150);
+  // 150 / 120 = 1. Behind 2 -> -1, ahead 2 -> 3. Range [-1, 0, 1, 2, 3]
+  assert.deepEqual(defaultIndices, [-1, 0, 1, 2, 3]);
 });
 
 test('generateChunkWaypoints generates consistent spline waypoints with smooth coords', () => {

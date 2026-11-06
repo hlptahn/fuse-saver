@@ -22,6 +22,7 @@ export class SparkSystem {
   private colors: Float32Array;
   private particleGeo: THREE.BufferGeometry;
   private particleMat: THREE.PointsMaterial;
+  private sparkTexture: THREE.CanvasTexture;
   private pointsMesh: THREE.Points;
 
   constructor() {
@@ -41,17 +42,18 @@ export class SparkSystem {
     this.particleGeo.setAttribute('position', new THREE.BufferAttribute(this.positions, 3));
     this.particleGeo.setAttribute('color', new THREE.BufferAttribute(this.colors, 3));
 
-    const sparkTexture = this.createSparkTexture();
+    this.sparkTexture = this.createSparkTexture();
     this.particleMat = new THREE.PointsMaterial({
       size: 0.8,
       vertexColors: true,
-      map: sparkTexture,
+      map: this.sparkTexture,
       transparent: true,
       blending: THREE.AdditiveBlending,
       depthWrite: false,
     });
 
     this.pointsMesh = new THREE.Points(this.particleGeo, this.particleMat);
+    this.pointsMesh.frustumCulled = false;
     this.group.add(this.pointsMesh);
   }
 
@@ -158,5 +160,6 @@ export class SparkSystem {
   public dispose() {
     this.particleGeo.dispose();
     this.particleMat.dispose();
+    this.sparkTexture.dispose();
   }
 }

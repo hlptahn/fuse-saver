@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   CameraMode,
   SectorType,
@@ -40,13 +40,21 @@ export const ControlDock: React.FC<ControlDockProps> = ({
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+    };
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+    };
+  }, []);
+
   const toggleFullscreen = () => {
     if (!document.fullscreenElement) {
       document.documentElement.requestFullscreen().catch(() => {});
-      setIsFullscreen(true);
     } else {
       document.exitFullscreen().catch(() => {});
-      setIsFullscreen(false);
     }
   };
 
@@ -81,12 +89,12 @@ export const ControlDock: React.FC<ControlDockProps> = ({
           {isCollapsed ? (
             <>
               <ChevronUp className="w-3.5 h-3.5 text-[#ff5500]" />
-              Show Controls (H)
+              Show Controls
             </>
           ) : (
             <>
               <ChevronDown className="w-3.5 h-3.5 text-[#ff5500]" />
-              Hide Controls (H)
+              Hide Controls
             </>
           )}
         </button>

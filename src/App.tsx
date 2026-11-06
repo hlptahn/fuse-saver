@@ -15,15 +15,20 @@ import { computeTelemetry, getChunkBounds, getChunkIndexFromZ } from './engine/r
 import { AppSettings, ComponentSpec, TelemetryState } from './types';
 
 export default function App() {
-  const [settings, setSettings] = useState<AppSettings>({
-    speed: 1.0,
-    currentIntensity: 1.2,
-    sparksEnabled: true,
-    audioMuted: true,
-    audioVolume: 0.6,
-    cameraMode: 'screensaver',
-    zenMode: false,
-    activeSector: 'micro_pcb',
+  const [settings, setSettings] = useState<AppSettings>(() => {
+    const prefersReducedMotion =
+      typeof window !== 'undefined' &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    return {
+      speed: prefersReducedMotion ? 0.5 : 1.0,
+      currentIntensity: 1.2,
+      sparksEnabled: !prefersReducedMotion,
+      audioMuted: true,
+      audioVolume: 0.6,
+      cameraMode: 'screensaver',
+      zenMode: false,
+      activeSector: 'micro_pcb',
+    };
   });
 
   const [selectedComponent, setSelectedComponent] = useState<ComponentSpec | null>(null);
@@ -64,7 +69,7 @@ export default function App() {
 
   const handleJumpSector = (sector: AppSettings['activeSector']) => {
     if (worldManagerRef.current) {
-      worldManagerRef.current.jumpToSector(sector);
+      worldManagerRef.current.jumpToSector(sector, cameraRef.current?.position.z);
       setSettings((prev) => ({
         ...prev,
         activeSector: sector,
@@ -111,6 +116,7 @@ export default function App() {
     setSelectedComponent(null);
     if (worldManagerRef.current) {
       worldManagerRef.current.inspectedTarget = null;
+      worldManagerRef.current.startExitInspectTransition();
     }
     setSettings((prev) => ({ ...prev, cameraMode: 'screensaver' }));
   };
@@ -124,6 +130,7 @@ export default function App() {
       <CanvasViewport
         settings={settings}
         onSelectComponent={setSelectedComponent}
+        onCloseInspector={handleCloseInspector}
         onUpdateSettings={handleUpdateSettings}
         worldManagerRef={worldManagerRef}
         cameraRef={cameraRef}

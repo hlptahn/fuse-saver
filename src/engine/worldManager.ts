@@ -48,6 +48,8 @@ export class WorldManager {
   private baseSpeed = 16.0; // units per second
   private currentBankAngle = 0;
   private targetBankAngle = 0;
+  private exitInspectTimer = 0;
+  private targetCameraHelper = new THREE.PerspectiveCamera();
 
   // Manual camera state
   public manualPos = new THREE.Vector3(0, 5, 0);
@@ -63,6 +65,41 @@ export class WorldManager {
   public inspectedTarget: THREE.Object3D | null = null;
   private inspectAngle = 0;
   private inspectDistance = 8.0;
+
+  public syncCameraToManual(camera: THREE.PerspectiveCamera) {
+    this.manualPos.copy(camera.position);
+    this.manualRot.setFromQuaternion(camera.quaternion, 'YXZ');
+  }
+
+  public syncManualToScreensaver(camera: THREE.PerspectiveCamera) {
+    this.travelDistance = camera.position.z;
+  }
+
+  public startExitInspectTransition() {
+    this.exitInspectTimer = 0.6;
+    this.inspectedTarget = null;
+  }
+
+  private getTForZ(targetZ: number): number {
+    if (!this.flightSpline || this.waypoints.length < 4) return 0.5;
+    const minZ = this.waypoints[0].z;
+    const maxZ = this.waypoints[this.waypoints.length - 1].z;
+    if (targetZ <= minZ) return 0.001;
+    if (targetZ >= maxZ) return 0.998;
+
+    let low = 0.0;
+    let high = 1.0;
+    for (let iter = 0; iter < 14; iter++) {
+      const mid = (low + high) * 0.5;
+      const ptZ = this.flightSpline.getPointAt(mid).z;
+      if (ptZ < targetZ) {
+        low = mid;
+      } else {
+        high = mid;
+      }
+    }
+    return Math.max(0.001, Math.min(0.998, (low + high) * 0.5));
+  }
 
   constructor(scene: THREE.Scene, materials: MaterialLibrary) {
     this.scene = scene;
@@ -345,15 +382,9 @@ export class WorldManager {
       this.travelDistance += currentSpeed * dt;
 
       if (this.flightSpline && this.waypoints.length >= 4) {
-        const totalZSpan = this.waypoints[this.waypoints.length - 1].z - this.waypoints[0].z;
-        const relativeZ = this.travelDistance - this.waypoints[0].z;
-        let t = relativeZ / Math.max(1, totalZSpan);
-
-        // Clamp or wrap safe range
-        t = Math.max(0.001, Math.min(0.998, t));
-
+        const t = this.getTForZ(this.travelDistance);
         const camPos = this.flightSpline.getPointAt(t);
-        const lookAheadT = Math.min(0.999, t + 0.035);
+        const lookAheadT = this.getTForZ(this.travelDistance + 12.0);
         const lookTarget = this.flightSpline.getPointAt(lookAheadT);
 
         // Add subtle dynamic flight roll banking
@@ -361,10 +392,19 @@ export class WorldManager {
         this.targetBankAngle = -tangent.x * 0.45;
         this.currentBankAngle += (this.targetBankAngle - this.currentBankAngle) * Math.min(1, dt * 4.0);
 
-        // Smooth camera movement using exponential damping
-        camera.position.copy(camPos);
-        camera.lookAt(lookTarget);
-        camera.rotation.z += this.currentBankAngle;
+        if (this.exitInspectTimer > 0) {
+          this.exitInspectTimer -= dt;
+          this.targetCameraHelper.position.copy(camPos);
+          this.targetCameraHelper.lookAt(lookTarget);
+          this.targetCameraHelper.rotation.z += this.currentBankAngle;
+
+          camera.position.lerp(camPos, Math.min(1, dt * 5.0));
+          camera.quaternion.slerp(this.targetCameraHelper.quaternion, Math.min(1, dt * 5.0));
+        } else {
+          camera.position.copy(camPos);
+          camera.lookAt(lookTarget);
+          camera.rotation.z += this.currentBankAngle;
+        }
 
         // Keep chunks active around current camera position
         this.updateChunks(camPos.z);
@@ -408,14 +448,22 @@ export class WorldManager {
       camera.lookAt(targetPos);
     }
 
-    // 2. Update Circuit Traces and Flowing Current in all active chunks
+    // 2. Update Circuit Traces and Flowing Current in active chunks
+    const sparkProbability = Math.min(1.0, 0.035 * 60 * dt * currentMultiplier);
+
     for (const chunk of this.chunks.values()) {
       chunk.traceSystem.update(dt, chunk.zStart, chunk.zEnd, this.corridorWidth, currentMultiplier);
 
-      // Random spontaneous spark discharges at high-voltage contacts
-      if (sparksEnabled && chunk.sparkOrigins.length > 0 && Math.random() < 0.035 * currentMultiplier) {
-        const randOrigin = chunk.sparkOrigins[Math.floor(Math.random() * chunk.sparkOrigins.length)];
-        this.sparkSystem.triggerBurst(randOrigin, 18, true);
+      const chunkCenterZ = (chunk.zStart + chunk.zEnd) * 0.5;
+      const distFromCam = Math.abs(chunkCenterZ - camera.position.z);
+
+      // Only spawn spontaneous sparks in chunks within about 120 units of the camera on Z
+      if (sparksEnabled && chunk.sparkOrigins.length > 0 && distFromCam <= 120) {
+        if (Math.random() < sparkProbability) {
+          const randOrigin = chunk.sparkOrigins[Math.floor(Math.random() * chunk.sparkOrigins.length)];
+          const playAudio = distFromCam <= 60;
+          this.sparkSystem.triggerBurst(randOrigin, 18, playAudio);
+        }
       }
     }
 
@@ -444,17 +492,36 @@ export class WorldManager {
     }
   }
 
-  public jumpToSector(sector: SectorType) {
-    // Find closest or next chunk with this sector type
-    for (const [idx, chunk] of this.chunks.entries()) {
-      if (chunk.sectorType === sector && chunk.zStart >= this.travelDistance) {
-        this.travelDistance = chunk.zStart + 10;
-        this.manualPos.set(0, 5, this.travelDistance);
-        return;
+  public jumpToSector(sector: SectorType, currentCameraZ?: number) {
+    const refZ = currentCameraZ !== undefined ? currentCameraZ : this.travelDistance;
+    let targetChunk: ProceduralChunk | null = null;
+    for (const chunk of this.chunks.values()) {
+      if (chunk.sectorType === sector && chunk.zStart >= refZ) {
+        if (!targetChunk || chunk.zStart < targetChunk.zStart) {
+          targetChunk = chunk;
+        }
       }
     }
-    // Or advance travel distance forward
-    this.travelDistance += 200;
+
+    if (!targetChunk) {
+      const currentIdx = Math.floor(refZ / CHUNK_LENGTH);
+      for (let i = 1; i <= 8; i++) {
+        const futureIdx = currentIdx + i;
+        const bounds = getChunkBounds(futureIdx, CHUNK_LENGTH);
+        if (bounds.sectorType === sector) {
+          const destZ = bounds.zStart + 10;
+          this.travelDistance = destZ;
+          this.manualPos.set(0, 5, destZ);
+          this.updateChunks(destZ);
+          return;
+        }
+      }
+    } else {
+      const destZ = targetChunk.zStart + 10;
+      this.travelDistance = destZ;
+      this.manualPos.set(0, 5, destZ);
+      this.updateChunks(destZ);
+    }
   }
 
   public setManualControl(action: 'forward' | 'backward' | 'left' | 'right' | 'up' | 'down', active: boolean) {

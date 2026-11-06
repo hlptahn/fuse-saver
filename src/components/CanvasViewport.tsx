@@ -4,11 +4,12 @@ import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment
 import { MaterialLibrary } from '../engine/materials';
 import { WorldManager } from '../engine/worldManager';
 import { proceduralAudio } from '../audio/proceduralAudio';
-import { AppSettings, ComponentSpec } from '../types';
+import { AppSettings, CameraMode, ComponentSpec } from '../types';
 
 interface CanvasViewportProps {
   settings: AppSettings;
   onSelectComponent: (spec: ComponentSpec | null) => void;
+  onCloseInspector?: () => void;
   onUpdateSettings: (patch: Partial<AppSettings>) => void;
   worldManagerRef: React.MutableRefObject<WorldManager | null>;
   cameraRef: React.MutableRefObject<THREE.PerspectiveCamera | null>;
@@ -17,6 +18,7 @@ interface CanvasViewportProps {
 export const CanvasViewport: React.FC<CanvasViewportProps> = ({
   settings,
   onSelectComponent,
+  onCloseInspector,
   onUpdateSettings,
   worldManagerRef,
   cameraRef,
@@ -24,6 +26,23 @@ export const CanvasViewport: React.FC<CanvasViewportProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const settingsRef = useRef<AppSettings>(settings);
   settingsRef.current = settings;
+
+  const prevModeRef = useRef<CameraMode>(settings.cameraMode);
+  useEffect(() => {
+    if (prevModeRef.current !== settings.cameraMode) {
+      const oldMode = prevModeRef.current;
+      const newMode = settings.cameraMode;
+      prevModeRef.current = newMode;
+
+      if (worldManagerRef.current && cameraRef.current) {
+        if (newMode === 'manual') {
+          worldManagerRef.current.syncCameraToManual(cameraRef.current);
+        } else if (oldMode === 'manual' && newMode === 'screensaver') {
+          worldManagerRef.current.syncManualToScreensaver(cameraRef.current);
+        }
+      }
+    }
+  }, [settings.cameraMode, worldManagerRef, cameraRef]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -48,7 +67,7 @@ export const CanvasViewport: React.FC<CanvasViewportProps> = ({
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.15;
-    renderer.setPixelRatio(isSoftwareGl ? 1 : Math.min(window.devicePixelRatio, 2));
+    renderer.setPixelRatio(isSoftwareGl ? 1 : Math.min(window.devicePixelRatio, 1.5));
     renderer.shadowMap.enabled = !isSoftwareGl;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     renderer.setSize(container.clientWidth, container.clientHeight);
@@ -113,33 +132,38 @@ export const CanvasViewport: React.FC<CanvasViewportProps> = ({
       renderer.compile(scene, camera);
     }
 
-    // 7. Mouse interaction for manual flight and click-to-inspect
-    let isMouseDown = false;
-    let prevMouseX = 0;
-    let prevMouseY = 0;
+    // 7. Pointer interaction for manual flight and click-to-inspect
+    let isPointerDown = false;
+    let prevPointerX = 0;
+    let prevPointerY = 0;
+    let pointerMovementDist = 0;
 
-    const onMouseDown = (e: MouseEvent) => {
+    const onPointerDown = (e: PointerEvent) => {
       if (e.button === 0) {
-        isMouseDown = true;
-        prevMouseX = e.clientX;
-        prevMouseY = e.clientY;
+        isPointerDown = true;
+        prevPointerX = e.clientX;
+        prevPointerY = e.clientY;
+        pointerMovementDist = 0;
       }
     };
 
-    const onMouseUp = () => {
-      isMouseDown = false;
+    const onPointerUp = () => {
+      isPointerDown = false;
     };
 
-    const onMouseMove = (e: MouseEvent) => {
-      if (isMouseDown && settingsRef.current.cameraMode === 'manual') {
-        const deltaX = e.clientX - prevMouseX;
-        const deltaY = e.clientY - prevMouseY;
-        prevMouseX = e.clientX;
-        prevMouseY = e.clientY;
+    const onPointerMove = (e: PointerEvent) => {
+      if (isPointerDown) {
+        const deltaX = e.clientX - prevPointerX;
+        const deltaY = e.clientY - prevPointerY;
+        prevPointerX = e.clientX;
+        prevPointerY = e.clientY;
+        pointerMovementDist += Math.hypot(deltaX, deltaY);
 
-        worldManager.manualRot.y -= deltaX * 0.003;
-        worldManager.manualRot.x -= deltaY * 0.003;
-        worldManager.manualRot.x = Math.max(-Math.PI * 0.45, Math.min(Math.PI * 0.45, worldManager.manualRot.x));
+        if (settingsRef.current.cameraMode === 'manual') {
+          worldManager.manualRot.y -= deltaX * 0.003;
+          worldManager.manualRot.x -= deltaY * 0.003;
+          worldManager.manualRot.x = Math.max(-Math.PI * 0.45, Math.min(Math.PI * 0.45, worldManager.manualRot.x));
+        }
       }
     };
 
@@ -148,6 +172,10 @@ export const CanvasViewport: React.FC<CanvasViewportProps> = ({
     const mouseCoord = new THREE.Vector2();
 
     const onClick = (e: MouseEvent) => {
+      // Ignore click if pointer moved more than 5px (was a drag)
+      if (pointerMovementDist > 5) {
+        return;
+      }
       // Ignore if clicking on UI buttons
       if ((e.target as HTMLElement).tagName === 'BUTTON' || (e.target as HTMLElement).closest('button')) {
         return;
@@ -185,8 +213,17 @@ export const CanvasViewport: React.FC<CanvasViewportProps> = ({
       }
     };
 
+    const isInputElement = (target: EventTarget | null): boolean => {
+      if (!target || !(target instanceof HTMLElement)) return false;
+      const tag = target.tagName.toLowerCase();
+      return tag === 'input' || tag === 'textarea' || tag === 'select' || target.isContentEditable;
+    };
+
     // Keyboard bindings
     const onKeyDown = (e: KeyboardEvent) => {
+      if (isInputElement(e.target)) return;
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+
       const key = e.key.toLowerCase();
       if (key === 'w' || key === 'arrowup') worldManager.setManualControl('forward', true);
       if (key === 's' || key === 'arrowdown') worldManager.setManualControl('backward', true);
@@ -196,19 +233,39 @@ export const CanvasViewport: React.FC<CanvasViewportProps> = ({
       if (key === 'e') worldManager.setManualControl('up', true);
 
       if (key === ' ') {
-        e.preventDefault();
+        const isButtonOrInput = e.target instanceof HTMLElement && (
+          e.target.tagName.toLowerCase() === 'button' ||
+          e.target.tagName.toLowerCase() === 'input' ||
+          e.target.closest('button')
+        );
+        if (!isButtonOrInput) {
+          e.preventDefault();
+        }
         worldManager.triggerSparkAtCameraTarget(camera);
       }
       if (key === 'h') {
         onUpdateSettings({ zenMode: !settingsRef.current.zenMode });
       }
-      if (key === '1') worldManager.jumpToSector('micro_pcb');
-      if (key === '2') worldManager.jumpToSector('industrial_fuses');
-      if (key === '3') worldManager.jumpToSector('busbar_trench');
-      if (key === '4') worldManager.jumpToSector('transformer_substation');
+      if (key === 'f') {
+        if (!document.fullscreenElement) {
+          document.documentElement.requestFullscreen().catch(() => {});
+        } else {
+          document.exitFullscreen().catch(() => {});
+        }
+      }
+      if (key === 'escape') {
+        if (onCloseInspector) {
+          onCloseInspector();
+        }
+      }
+      if (key === '1') worldManager.jumpToSector('micro_pcb', camera.position.z);
+      if (key === '2') worldManager.jumpToSector('industrial_fuses', camera.position.z);
+      if (key === '3') worldManager.jumpToSector('busbar_trench', camera.position.z);
+      if (key === '4') worldManager.jumpToSector('transformer_substation', camera.position.z);
     };
 
     const onKeyUp = (e: KeyboardEvent) => {
+      if (isInputElement(e.target)) return;
       const key = e.key.toLowerCase();
       if (key === 'w' || key === 'arrowup') worldManager.setManualControl('forward', false);
       if (key === 's' || key === 'arrowdown') worldManager.setManualControl('backward', false);
@@ -218,13 +275,24 @@ export const CanvasViewport: React.FC<CanvasViewportProps> = ({
       if (key === 'e') worldManager.setManualControl('up', false);
     };
 
+    const onBlur = () => {
+      worldManager.setManualControl('forward', false);
+      worldManager.setManualControl('backward', false);
+      worldManager.setManualControl('left', false);
+      worldManager.setManualControl('right', false);
+      worldManager.setManualControl('up', false);
+      worldManager.setManualControl('down', false);
+    };
+
     const dom = renderer.domElement;
-    dom.addEventListener('mousedown', onMouseDown);
-    window.addEventListener('mouseup', onMouseUp);
-    window.addEventListener('mousemove', onMouseMove);
+    dom.addEventListener('pointerdown', onPointerDown);
+    window.addEventListener('pointerup', onPointerUp);
+    window.addEventListener('pointercancel', onPointerUp);
+    window.addEventListener('pointermove', onPointerMove);
     dom.addEventListener('click', onClick);
     window.addEventListener('keydown', onKeyDown);
     window.addEventListener('keyup', onKeyUp);
+    window.addEventListener('blur', onBlur);
 
     // 8. Resize Listener
     const onResize = () => {
@@ -237,9 +305,11 @@ export const CanvasViewport: React.FC<CanvasViewportProps> = ({
     };
     window.addEventListener('resize', onResize);
 
-    // 9. Continuous Animation Loop with Software-WebGL Pacing
+    // 9. Continuous Animation Loop with Performance Guard
     let frameId = 0;
     let prevTime = performance.now();
+    let slowTimeAccumulator = 0;
+    let performanceGuardApplied = isSoftwareGl;
 
     function afterDraw(cb: () => void) {
       const gl = renderer.getContext() as WebGL2RenderingContext;
@@ -262,6 +332,21 @@ export const CanvasViewport: React.FC<CanvasViewportProps> = ({
       const rawDt = (now - prevTime) * 0.001;
       prevTime = now;
       const dt = Math.min(rawDt, 0.05); // Clamp dt to prevent physics/flight jumps
+
+      // Performance guard: lower pixel ratio to 1 and disable shadows if average frame time > 30ms for 3s
+      if (!performanceGuardApplied) {
+        if (rawDt > 0.030) {
+          slowTimeAccumulator += rawDt;
+          if (slowTimeAccumulator >= 3.0) {
+            performanceGuardApplied = true;
+            renderer.setPixelRatio(1);
+            renderer.shadowMap.enabled = false;
+            keyLight.castShadow = false;
+          }
+        } else {
+          slowTimeAccumulator = Math.max(0, slowTimeAccumulator - rawDt * 0.5);
+        }
+      }
 
       const currentSettings = settingsRef.current;
 
@@ -301,12 +386,14 @@ export const CanvasViewport: React.FC<CanvasViewportProps> = ({
       cancelAnimationFrame(frameId);
       clearTimeout(frameId);
       window.removeEventListener('resize', onResize);
-      dom.removeEventListener('mousedown', onMouseDown);
-      window.removeEventListener('mouseup', onMouseUp);
-      window.removeEventListener('mousemove', onMouseMove);
+      dom.removeEventListener('pointerdown', onPointerDown);
+      window.removeEventListener('pointerup', onPointerUp);
+      window.removeEventListener('pointercancel', onPointerUp);
+      window.removeEventListener('pointermove', onPointerMove);
       dom.removeEventListener('click', onClick);
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);
+      window.removeEventListener('blur', onBlur);
 
       worldManager.dispose();
       materials.dispose();

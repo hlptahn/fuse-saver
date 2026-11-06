@@ -16,6 +16,7 @@ class ProceduralAudioEngine {
   private osc150: OscillatorNode | null = null;
   private noiseNode: AudioBufferSourceNode | null = null;
   private noiseFilter: BiquadFilterNode | null = null;
+  private lastSpeedMultiplier = -1;
 
   public init() {
     if (this.isInitialized) return;
@@ -126,6 +127,9 @@ class ProceduralAudioEngine {
 
   public updateFlightSpeed(speedMultiplier: number) {
     if (!this.ctx || this.isMuted || !this.osc50 || !this.noiseFilter) return;
+    if (Math.abs(speedMultiplier - this.lastSpeedMultiplier) < 0.001) return;
+    this.lastSpeedMultiplier = speedMultiplier;
+
     const now = this.ctx.currentTime;
     // Modulate hum frequency subtly with flight speed
     const baseFreq = 50.0 * (0.95 + speedMultiplier * 0.05);
